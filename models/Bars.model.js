@@ -4,7 +4,7 @@ const BarSchema = new mongoose.Schema({
     owner: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: false
     },
     name: {
         type: String,
@@ -24,22 +24,19 @@ const BarSchema = new mongoose.Schema({
         default: "https://www.gravatar.com/avatar/"
     },
     address: {
-        street: { type: String, required: true },
-        city: { type: String, default: "Mexicali" },
-        state: { type: String, default: "Baja California" },
-        zipCode: String,
-        type: String,
-        required: true,
-        trim: true
+        street: { type: String, required: false, trim: true },
+        city: { type: String, default: "Mexicali", trim: true },
+        state: { type: String, default: "Baja California", trim: true },
+        zipCode: { type: String, trim: true }
     },
     mapsUrl: {
         type: String,
-        required: true,
+        required: false,
         trim: true
     },
     phone: {
         type: String,
-        required: true,
+        required: false,
         trim: true
     },
     tags: {

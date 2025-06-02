@@ -1,15 +1,28 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const app = express();
+const cors = require("cors");
 const port = 3000;
-const Bar = require("./models/Bars.models.js");
-const Event = require("./models/Events.models.js");
-const Favorite = require("./models/Favorites.models.js");
-const menuItem = require("./models/MenuItems.models.js");
-const Review = require("./models/Reviews.models.js");
-const User = require("./models/Users.models.js");
+const authRoutes = require('./routes/authRoutes');
+// CORS para que permita que la api se pueda conectar con el front
+const corsOptions = {
+  origin: ['http://localhost:8081'], 
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  credentials: true,
+  optionsSuccessStatus: 200 
+};
+app.use(cors(corsOptions));
+app.use(express.json());
+app.use('/api/auth', authRoutes);
+const Bar = require("./models/Bars.model.js");
+const Event = require("./models/Events.model.js");
+const Favorite = require("./models/Favorites.model.js");
+const menuItem = require("./models/menuItem.models.js");
+const Review = require("./models/Reviews.model.js");
+const User = require("./models/Users.model.js");
 
-//conexion a base de datos y puerto
+// conexion a base de datos y puerto
 mongoose.connect("mongodb+srv://admin:admin12345@backenddb.mjazc36.mongodb.net/Node-API?retryWrites=true&w=majority&appName=backenddb")
 .then(() => {
     console.log("connected to mongodb");
@@ -17,6 +30,9 @@ mongoose.connect("mongodb+srv://admin:admin12345@backenddb.mjazc36.mongodb.net/N
         console.log(`Server is running on port ${port}`);
     });
 })
+.catch((error) => {
+    console.log("Error connecting to MongoDB:", error);
+});
 
 // mensaje inicial al abrir la API
 app.get ('/', (req, res) => {
@@ -88,11 +104,12 @@ app.get("/api/bars/:id", async (req, res) => {
 // menú de un bar por ID
 app.get("/api/bars/:id/menu", async (req, res) => {
   try {
-    const bar = await Bar.findById(req.params.id).populate("menuItems");
+    const bar = await Bar.findById(req.params.id);
     if (!bar) {
       return res.status(404).json({ message: "Bar no encontrado" });
     }
-    res.status(200).json(bar.menuItems);
+    const menuItems = await menuItem.find({ bar: req.params.id });
+    res.status(200).json(menuItems);
   } catch (error) {
     res.status(500).json({ message: "Error al obtener el menú del bar", error });
   }
@@ -101,70 +118,111 @@ app.get("/api/bars/:id/menu", async (req, res) => {
 // comida de un bar por ID
 app.get("/api/bars/:id/food", async (req, res) => {
   try {
-    const bar = await Bar.findById(req.params.id).populate("menuItems");
+    const bar = await Bar.findById(req.params.id);
     if (!bar) {
       return res.status(404).json({ message: "Bar no encontrado" });
     }
-    const foodItems = bar.menuItems.filter(item => item.type === "comida");
-    res.status(200).json(foodItems);
+
+    const foodItems = await menuItem.find({ 
+      bar: req.params.id, 
+      type: "comida" 
+    }).select('name description price photo type');
+
+    if (!foodItems || foodItems.length === 0) {
+      return res.status(200).json({ 
+        message: "Este bar no tiene items de comida registrados",
+        items: [] 
+      });
+    }
+
+    res.status(200).json({
+      count: foodItems.length,
+      items: foodItems
+    });
   } catch (error) {
-    res.status(500).json({ message: "Error al obtener la comida del bar", error });
+    console.error("Error al obtener comida:", error);
+    res.status(500).json({ 
+      message: "Error al obtener la comida del bar", 
+      error: error.message 
+    });
   }
 });
 
 // bebidas de un bar por ID
 app.get("/api/bars/:id/drinks", async (req, res) => {
   try {
-    const bar = await Bar.findById(req.params.id).populate("menuItems");
+    const bar = await Bar.findById(req.params.id);
     if (!bar) {
       return res.status(404).json({ message: "Bar no encontrado" });
     }
-    const drinkItems = bar.menuItems.filter(item => item.type === "bebida");
-    res.status(200).json(drinkItems);
-  } catch (error) {
-    res.status(500).json({ message: "Error al obtener las bebidas del bar", error });
-  }
-});
 
-// detalles de un item especifico del menú por ID
-app.get("/api/bars/:barId/menu/:itemId", async (req, res) => {
-  try {
-    const bar = await Bar.findById(req.params.barId).populate("menuItems");
-    if (!bar) {
-      return res.status(404).json({ message: "Bar no encontrado" });
+    const drinkItems = await menuItem.find({ 
+      bar: req.params.id, 
+      type: "bebida" 
+    }).select('name description price photo type');
+
+    if (!drinkItems || drinkItems.length === 0) {
+      return res.status(200).json({ 
+        message: "Este bar no tiene bebidas registradas",
+        items: [] 
+      });
     }
-    const menuItem = bar.menuItems.find(item => item._id.toString() === req.params.itemId);
-    if (!menuItem) {
-      return res.status(404).json({ message: "Item del menú no encontrado" });
-    }
-    res.status(200).json(menuItem);
+
+    res.status(200).json({
+      count: drinkItems.length,
+      items: drinkItems
+    });
   } catch (error) {
-    res.status(500).json({ message: "Error al obtener el item del menú", error });
+    console.error("Error al obtener bebidas:", error);
+    res.status(500).json({ 
+      message: "Error al obtener las bebidas del bar", 
+      error: error.message 
+    });
   }
 });
 
 // alcohol de un bar por ID
 app.get("/api/bars/:id/alcohol", async (req, res) => {
   try {
-    const bar = await Bar.findById(req.params.id).populate("menuItems");
+    const bar = await Bar.findById(req.params.id);
     if (!bar) {
       return res.status(404).json({ message: "Bar no encontrado" });
     }
-    const alcoholItems = bar.menuItems.filter(item => item.type === "alcohol");
-    res.status(200).json(alcoholItems);
+
+    const alcoholItems = await menuItem.find({ 
+      bar: req.params.id, 
+      type: "alcohol" 
+    }).select('name description price photo type alcoholPercentage volume');
+
+    if (!alcoholItems || alcoholItems.length === 0) {
+      return res.status(200).json({ 
+        message: "Este bar no tiene bebidas alcohólicas registradas",
+        items: [] 
+      });
+    }
+
+    res.status(200).json({
+      count: alcoholItems.length,
+      items: alcoholItems
+    });
   } catch (error) {
-    res.status(500).json({ message: "Error al obtener el alcohol del bar", error });
+    console.error("Error al obtener alcohol:", error);
+    res.status(500).json({ 
+      message: "Error al obtener el alcohol del bar", 
+      error: error.message 
+    });
   }
 });
 
 // reseñas de un bar por ID
 app.get("/api/bars/:id/reviews", async (req, res) => {
   try {
-    const bar = await Bar.findById(req.params.id).populate("reviews");
+    const bar = await Bar.findById(req.params.id);
     if (!bar) {
       return res.status(404).json({ message: "Bar no encontrado" });
     }
-    res.status(200).json(bar.reviews);
+    const reviews = await Review.find({ bar: req.params.id }).populate('user', 'name photo');
+    res.status(200).json(reviews);
   } catch (error) {
     res.status(500).json({ message: "Error al obtener las reseñas del bar", error });
   }
@@ -173,11 +231,12 @@ app.get("/api/bars/:id/reviews", async (req, res) => {
 // eventos de un bar por ID
 app.get("/api/bars/:id/events", async (req, res) => {
   try {
-    const bar = await Bar.findById(req.params.id).populate("events");
+    const bar = await Bar.findById(req.params.id);
     if (!bar) {
       return res.status(404).json({ message: "Bar no encontrado" });
     }
-    res.status(200).json(bar.events);
+    const events = await Event.find({ bar: req.params.id });
+    res.status(200).json(events);
   } catch (error) {
     res.status(500).json({ message: "Error al obtener los eventos del bar", error });
   }
@@ -186,9 +245,16 @@ app.get("/api/bars/:id/events", async (req, res) => {
 // CRUD relacionado a menuItems
 
 // crear un item del menú
-app.post("/api/menuItems", async (req, res) => {
+app.post("/api/bars/:barId/menu", async (req, res) => {
   try {
-    const newMenuItem = new menuItem(req.body);
+    const bar = await Bar.findById(req.params.barId);
+    if (!bar) {
+      return res.status(404).json({ message: "Bar no encontrado" });
+    }
+    const newMenuItem = new menuItem({
+      ...req.body,
+      bar: req.params.barId
+    });
     await newMenuItem.save();
     res.status(201).json(newMenuItem);
   } catch (error) {
@@ -197,22 +263,37 @@ app.post("/api/menuItems", async (req, res) => {
 });
 
 // actualizar un item del menú
-app.put("/api/menuItems/:id", async (req, res) => {
+app.put("/api/bars/:barId/menu/:itemId", async (req, res) => {
   try {
-    const updatedMenuItem = await menuItem.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const bar = await Bar.findById(req.params.barId);
+    if (!bar) {
+      return res.status(404).json({ message: "Bar no encontrado" });
+    }
+    const updatedMenuItem = await menuItem.findOneAndUpdate(
+      { _id: req.params.itemId, bar: req.params.barId },
+      req.body,
+      { new: true }
+    );
     if (!updatedMenuItem) {
       return res.status(404).json({ message: "Item del menú no encontrado" });
     }
     res.status(200).json(updatedMenuItem);
-    } catch (error) {
+  } catch (error) {
     res.status(500).json({ message: "Error al actualizar el item del menú", error });
   }
 });
 
 // eliminar un item del menú
-app.delete("/api/menuItems/:id", async (req, res) => {
+app.delete("/api/bars/:barId/menu/:itemId", async (req, res) => {
   try {
-    const deletedMenuItem = await menuItem.findByIdAndDelete(req.params.id);
+    const bar = await Bar.findById(req.params.barId);
+    if (!bar) {
+      return res.status(404).json({ message: "Bar no encontrado" });
+    }
+    const deletedMenuItem = await menuItem.findOneAndDelete({
+      _id: req.params.itemId,
+      bar: req.params.barId
+    });
     if (!deletedMenuItem) {
       return res.status(404).json({ message: "Item del menú no encontrado" });
     }
@@ -235,6 +316,26 @@ app.get("/api/menuItems/:id", async (req, res) => {
   }
 });
 
+// detalles de un item especifico del menú por ID
+app.get("/api/bars/:barId/menu/:itemId", async (req, res) => {
+  try {
+    const bar = await Bar.findById(req.params.barId);
+    if (!bar) {
+      return res.status(404).json({ message: "Bar no encontrado" });
+    }
+    const item = await menuItem.findOne({ 
+      _id: req.params.itemId,
+      bar: req.params.barId 
+    });
+    if (!item) {
+      return res.status(404).json({ message: "Item del menú no encontrado" });
+    }
+    res.status(200).json(item);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener el item del menú", error });
+  }
+});
+
 // CRUD relacionado a eventos
 
 // jala todos los eventos
@@ -248,9 +349,22 @@ app.get("/api/events", async (req, res) => {
 });
 
 // crear un evento
-app.post("/api/events", async (req, res) => {
+app.post("/api/bars/:barId/events", async (req, res) => {
   try {
-    const newEvent = new Event(req.body);
+    const bar = await Bar.findById(req.params.barId);
+    if (!bar) {
+      return res.status(404).json({ message: "Bar no encontrado" });
+    }
+
+    // Validar que la fecha de inicio sea anterior a la fecha de fin
+    if (new Date(req.body.start) >= new Date(req.body.end)) {
+      return res.status(400).json({ message: "La fecha de inicio debe ser anterior a la fecha de fin" });
+    }
+
+    const newEvent = new Event({
+      ...req.body,
+      bar: req.params.barId
+    });
     await newEvent.save();
     res.status(201).json(newEvent);
   } catch (error) {
@@ -259,22 +373,48 @@ app.post("/api/events", async (req, res) => {
 });
 
 // actualizar un evento
-app.put("/api/events/:id", async (req, res) => {
+app.put("/api/bars/:barId/events/:eventId", async (req, res) => {
   try {
-    const updatedEvent = await Event.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const bar = await Bar.findById(req.params.barId);
+    if (!bar) {
+      return res.status(404).json({ message: "Bar no encontrado" });
+    }
+
+    // Validar que la fecha de inicio sea anterior a la fecha de fin si se están actualizando las fechas
+    if (req.body.start && req.body.end) {
+      if (new Date(req.body.start) >= new Date(req.body.end)) {
+        return res.status(400).json({ message: "La fecha de inicio debe ser anterior a la fecha de fin" });
+      }
+    }
+
+    const updatedEvent = await Event.findOneAndUpdate(
+      { _id: req.params.eventId, bar: req.params.barId },
+      req.body,
+      { new: true }
+    );
+    
     if (!updatedEvent) {
       return res.status(404).json({ message: "Evento no encontrado" });
-    } 
-        res.status(200).json(updatedEvent);
-    } catch (error) {
-        res.status(500).json({ message: "Error al actualizar el evento", error });
     }
-    });
+    res.status(200).json(updatedEvent);
+  } catch (error) {
+    res.status(500).json({ message: "Error al actualizar el evento", error });
+  }
+});
 
 // eliminar un evento
-app.delete("/api/events/:id", async (req, res) => {
+app.delete("/api/bars/:barId/events/:eventId", async (req, res) => {
   try {
-    const deletedEvent = await Event.findByIdAndDelete(req.params.id);
+    const bar = await Bar.findById(req.params.barId);
+    if (!bar) {
+      return res.status(404).json({ message: "Bar no encontrado" });
+    }
+
+    const deletedEvent = await Event.findOneAndDelete({
+      _id: req.params.eventId,
+      bar: req.params.barId
+    });
+    
     if (!deletedEvent) {
       return res.status(404).json({ message: "Evento no encontrado" });
     }
@@ -284,7 +424,26 @@ app.delete("/api/events/:id", async (req, res) => {
   }
 });
 
-// información de un evento por ID
+// obtener eventos futuros de un bar
+app.get("/api/bars/:barId/events/upcoming", async (req, res) => {
+  try {
+    const bar = await Bar.findById(req.params.barId);
+    if (!bar) {
+      return res.status(404).json({ message: "Bar no encontrado" });
+    }
+
+    const upcomingEvents = await Event.find({
+      bar: req.params.barId,
+      start: { $gte: new Date() }
+    }).sort({ start: 1 });
+
+    res.status(200).json(upcomingEvents);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener los eventos futuros", error });
+  }
+});
+
+// obtener evento por id
 app.get("/api/events/:id", async (req, res) => {
   try {
     const event = await Event.findById(req.params.id);
@@ -297,85 +456,22 @@ app.get("/api/events/:id", async (req, res) => {
   }
 });
 
-// CRUD relacionado a reseñas
+// CRUD relacionado a reseñas (Reviews)
 
-// hacerle una reseña a un bar
-app.post("/api/bars/:barId/reviews", async (req, res) => {
-  try {
-    const bar = await Bar.findById(req.params.barId);
-    if (!bar) {
-      return res.status(404).json({ message: "Bar no encontrado" });
-    }
-    const newReview = new Review(req.body);
-    newReview.bar = bar._id;
-    await newReview.save();
-    bar.reviews.push(newReview._id);
-    await bar.save();
-    res.status(201).json(newReview);
-  } catch (error) {
-    res.status(500).json({ message: "Error al crear la reseña", error });
-  }
-});
 
-// modificar una reseña
-app.put("/api/reviews/:id", async (req, res) => {
-  try {
-    const updatedReview = await Review.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!updatedReview) {
-      return res.status(404).json({ message: "Reseña no encontrada" });
-    }   
-    res.status(200).json(updatedReview);
-    } catch (error) {
-        res.status(500).json({ message: "Error al actualizar la reseña", error });
-    }
-});
-
-// eliminar una reseña
-app.delete("/api/reviews/:id", async (req, res) => {
-  try {
-    const deletedReview = await Review.findByIdAndDelete(req.params.id);
-    if (!deletedReview) {
-      return res.status(404).json({ message: "Reseña no encontrada" });
-    }
-    const bar = await Bar.findById(deletedReview.bar);
-    if (bar) {
-      bar.reviews.pull(deletedReview._id);
-      await bar.save();
-    }
-    res.status(200).json({ message: "Reseña eliminada exitosamente" });
-  } catch (error) {
-    res.status(500).json({ message: "Error al eliminar la reseña", error });
-  }
-});
-
-// agregar a favoritos un bar
-app.post("/api/bars/:barId/favorites", async (req, res) => {
-  try {
-    const bar = await Bar.findById(req.params.barId);
-    if (!bar) {
-      return res.status(404).json({ message: "Bar no encontrado" });
-    }
-    const newFavorite = new Favorite({
-      user: req.body.user,
-      bar: bar._id
-    });
-    await newFavorite.save();
-    res.status(201).json(newFavorite);
-  } catch (error) {
-    res.status(500).json({ message: "Error al agregar el bar a favoritos", error });
-  }
-});
 
 // eliminar un bar de favoritos
-app.delete("/api/bars/:barId/favorites", async (req, res) => {
+app.delete("/api/users/:userId/favorites/:barId", async (req, res) => {
   try {
-    const favorite = await Favorite.findOneAndDelete({
-      user: req.body.user,
+    const user = await User.findById(req.params.userId);
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    await Favorite.findOneAndDelete({
+      user: req.params.userId,
       bar: req.params.barId
     });
-    if (!favorite) {
-      return res.status(404).json({ message: "Favorito no encontrado" });
-    }
     res.status(200).json({ message: "Bar eliminado de favoritos exitosamente" });
   } catch (error) {
     res.status(500).json({ message: "Error al eliminar el bar de favoritos", error });
@@ -389,6 +485,19 @@ app.get("/api/users/:userId/favorites", async (req, res) => {
     res.status(200).json(favorites);
   } catch (error) {
     res.status(500).json({ message: "Error al obtener los favoritos del usuario", error });
+  }
+});
+
+// revisar si esta como favorito, para el front
+app.get("/api/users/:userId/favorites/:barId/check", async (req, res) => {
+  try {
+    const favorite = await Favorite.findOne({
+      user: req.params.userId,
+      bar: req.params.barId
+    });
+    res.status(200).json({ isFavorite: !!favorite });
+  } catch (error) {
+    res.status(500).json({ message: "Error checking favorite status", error });
   }
 });
 
@@ -443,6 +552,211 @@ app.get("/api/users/:id/reviews", async (req, res) => {
     res.status(500).json({ message: "Error al obtener las reseñas del usuario", error });
   }
 });
+
+// todos los usuarios
+app.get("/api/users", async (req, res) => {
+  try {
+    const users = await User.find();
+    res.status(200).json(users);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener los usuarios", error });
+  }
+});
+
+// jala la info de el usuario q está logged in
+app.get("/api/users/me", async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    res.status(200).json(user);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener la info del usuario", error });
+  }
+});
+
+// Endpoints de business
+
+// bars asociados a un owner
+app.get("/api/bars/owner/:ownerId", async (req, res) => {
+  try {
+    const bars = await Bar.find({ owner: req.params.ownerId });
+    res.status(200).json(bars);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener las barras del owner", error });
+  }
+});
+
+// info del bar de un owner por id
+app.get("/api/bars/owner/:ownerId/:barId", async (req, res) => {
+  try {
+    const bar = await Bar.findOne({ owner: req.params.ownerId, _id: req.params.barId });
+    if (!bar) {
+      return res.status(404).json({ message: "Bar no encontrado" });
+    }
+    res.status(200).json(bar);
+    } catch (error) {
+      res.status(500).json({ message: "Error al obtener la info del bar del owner", error });
+    }
+});
+
+// crear un bar (asignando su id como el owner)
+app.post("/api/bars/owner/:ownerId", async (req, res) => {
+  try {
+    const newBar = new Bar({
+      ...req.body,
+      owner: req.params.ownerId
+    });
+    await newBar.save();
+    res.status(201).json(newBar);
+  } catch (error) {
+    res.status(500).json({ message: "Error al crear el bar", error });
+  }
+});
+
+// actualizar un bar de un owner
+app.put("/api/bars/owner/:ownerId/:barId", async (req, res) => {
+  try {
+    const bar = await Bar.findOneAndUpdate({ owner: req.params.ownerId, _id: req.params.barId }, req.body, { new: true });
+    if (!bar) {
+      return res.status(404).json({ message: "Bar no encontrado" });
+    }
+    res.status(200).json(bar);
+  } catch (error) {
+    res.status(500).json({ message: "Error al actualizar el bar", error });
+  }
+});
+
+// eliminar un bar de un owner
+app.delete("/api/bars/owner/:ownerId/:barId", async (req, res) => {
+  try {
+    const bar = await Bar.findOneAndDelete({ owner: req.params.ownerId, _id: req.params.barId });
+    if (!bar) {
+      return res.status(404).json({ message: "Bar no encontrado" });
+    }
+    res.status(200).json({ message: "Bar eliminado exitosamente" });
+  } catch (error) {
+    res.status(500).json({ message: "Error al eliminar el bar", error });
+  }
+});
+
+// eventos de un bar de un owner
+app.get("/api/bars/owner/:ownerId/:barId/events", async (req, res) => {
+  try {
+    const events = await Event.find({ bar: req.params.barId });
+    res.status(200).json(events);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener los eventos del bar", error });
+  }
+});
+
+// crear un evento de un bar de un owner
+app.post("/api/bars/owner/:ownerId/:barId/events", async (req, res) => {
+  try {
+    const newEvent = new Event({
+      ...req.body,
+      bar: req.params.barId
+    });
+    await newEvent.save();
+    res.status(201).json(newEvent);
+    } catch (error) {
+      res.status(500).json({ message: "Error al crear el evento", error });
+    }
+});
+
+// actualizar un evento de un bar de un owner
+app.put("/api/bars/owner/:ownerId/:barId/events/:eventId", async (req, res) => {
+  try {
+    const event = await Event.findOneAndUpdate({ bar: req.params.barId, _id: req.params.eventId }, req.body, { new: true });
+    if (!event) {
+      return res.status(404).json({ message: "Evento no encontrado" });
+    }
+    res.status(200).json(event);
+  } catch (error) {
+    res.status(500).json({ message: "Error al actualizar el evento", error });
+  }
+});
+
+// eliminar un evento de un bar de un owner
+app.delete("/api/bars/owner/:ownerId/:barId/events/:eventId", async (req, res) => {
+  try {
+    const event = await Event.findOneAndDelete({ bar: req.params.barId, _id: req.params.eventId });
+    if (!event) {
+      return res.status(404).json({ message: "Evento no encontrado" });
+    }
+    res.status(200).json({ message: "Evento eliminado exitosamente" });
+    } catch (error) {
+      res.status(500).json({ message: "Error al eliminar el evento", error });
+    }
+});
+
+// items de un bar de un owner
+app.get("/api/bars/owner/:ownerId/:barId/menu", async (req, res) => {
+  try {
+    const menuItems = await menuItem.find({ bar: req.params.barId });
+    res.status(200).json(menuItems);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener los items del bar", error });
+  }
+});
+
+// crear un item de un bar de un owner  
+app.post("/api/bars/owner/:ownerId/:barId/menu", async (req, res) => {
+  try {
+    const newMenuItem = new menuItem({
+      ...req.body,
+      bar: req.params.barId
+    });
+    await newMenuItem.save();
+    res.status(201).json(newMenuItem);
+  } catch (error) {
+    res.status(500).json({ message: "Error al crear el item del bar", error });
+  }
+});
+
+// actualizar un item de un bar de un owner
+app.put("/api/bars/owner/:ownerId/:barId/menu/:itemId", async (req, res) => {
+  try {
+    const menuItem = await menuItem.findOneAndUpdate({ bar: req.params.barId, _id: req.params.itemId }, req.body, { new: true });
+    if (!menuItem) {
+      return res.status(404).json({ message: "Item del bar no encontrado" });
+    }
+    res.status(200).json(menuItem);
+  } catch (error) {
+    res.status(500).json({ message: "Error al actualizar el item del bar", error });
+  }
+});
+
+// eliminar un item de un bar de un owner
+app.delete("/api/bars/owner/:ownerId/:barId/menu/:itemId", async (req, res) => {
+  try {
+    const menuItem = await menuItem.findOneAndDelete({ bar: req.params.barId, _id: req.params.itemId });
+    if (!menuItem) {
+      return res.status(404).json({ message: "Item del bar no encontrado" });
+    }
+    res.status(200).json({ message: "Item del bar eliminado exitosamente" }); 
+  } catch (error) {
+    res.status(500).json({ message: "Error al eliminar el item del bar", error });
+  }
+});
+
+// reseñas de un bar de un owner
+app.get("/api/bars/owner/:ownerId/:barId/reviews", async (req, res) => {
+  try {
+    const reviews = await Review.find({ bar: req.params.barId });
+    res.status(200).json(reviews);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener las reseñas del bar", error });
+  }
+});
+
+
+
+
+
+
+
+
+
+
 
 //  comentarios
 // mongodb+srv://admin:admin12345@backenddb.mjazc36.mongodb.net/?retryWrites=true&w=majority&appName=backenddb
