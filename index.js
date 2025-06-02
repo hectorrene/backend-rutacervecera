@@ -715,11 +715,15 @@ app.post("/api/bars/owner/:ownerId/:barId/menu", async (req, res) => {
 // actualizar un item de un bar de un owner
 app.put("/api/bars/owner/:ownerId/:barId/menu/:itemId", async (req, res) => {
   try {
-    const menuItem = await menuItem.findOneAndUpdate({ bar: req.params.barId, _id: req.params.itemId }, req.body, { new: true });
-    if (!menuItem) {
+    const updatedMenuItem = await menuItem.findOneAndUpdate(
+      { bar: req.params.barId, _id: req.params.itemId }, 
+      req.body, 
+      { new: true }
+    );
+    if (!updatedMenuItem) {
       return res.status(404).json({ message: "Item del bar no encontrado" });
     }
-    res.status(200).json(menuItem);
+    res.status(200).json(updatedMenuItem);
   } catch (error) {
     res.status(500).json({ message: "Error al actualizar el item del bar", error });
   }
@@ -728,8 +732,10 @@ app.put("/api/bars/owner/:ownerId/:barId/menu/:itemId", async (req, res) => {
 // eliminar un item de un bar de un owner
 app.delete("/api/bars/owner/:ownerId/:barId/menu/:itemId", async (req, res) => {
   try {
-    const menuItem = await menuItem.findOneAndDelete({ bar: req.params.barId, _id: req.params.itemId });
-    if (!menuItem) {
+    const deletedMenuItem = await menuItem.findOneAndDelete(
+      { bar: req.params.barId, _id: req.params.itemId }
+    );
+    if (!deletedMenuItem) {
       return res.status(404).json({ message: "Item del bar no encontrado" });
     }
     res.status(200).json({ message: "Item del bar eliminado exitosamente" }); 
