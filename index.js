@@ -341,12 +341,27 @@ app.get("/api/bars/:barId/menu/:itemId", async (req, res) => {
 // jala todos los eventos
 app.get("/api/events", async (req, res) => {
   try {
-    const events = await Event.find();
+    // Populate el campo 'bar' para obtener la información completa del bar
+    const events = await Event.find().populate('bar', 'name location');
     res.status(200).json(events);
   } catch (error) {
     res.status(500).json({ message: "Error al obtener los eventos", error });
   }
 });
+
+// También actualiza el endpoint para obtener evento por ID
+app.get("/api/events/:id", async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id).populate('bar', 'name location');
+    if (!event) {
+      return res.status(404).json({ message: "Evento no encontrado" });
+    }
+    res.status(200).json(event);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener el evento", error });
+  }
+});
+
 
 // crear un evento
 app.post("/api/bars/:barId/events", async (req, res) => {
@@ -424,41 +439,175 @@ app.delete("/api/bars/:barId/events/:eventId", async (req, res) => {
   }
 });
 
-// obtener eventos futuros de un bar
-app.get("/api/bars/:barId/events/upcoming", async (req, res) => {
+
+// CRUD relacionado a reseñas (Reviews)
+
+// CRUD completo para Reviews
+
+// Crear una review para un bar específico
+app.post("/api/bars/:barId/reviews", async (req, res) => {
   try {
     const bar = await Bar.findById(req.params.barId);
     if (!bar) {
       return res.status(404).json({ message: "Bar no encontrado" });
     }
 
-    const upcomingEvents = await Event.find({
-      bar: req.params.barId,
-      start: { $gte: new Date() }
-    }).sort({ start: 1 });
+    // Verificar que el usuario no haya hecho ya una review para este bar
+    const existingReview = await Review.findOne({
+      user: req.user.id, // Asumiendo que tienes middleware de autenticación
+      bar: req.params.barId
+    });
 
-    res.status(200).json(upcomingEvents);
-  } catch (error) {
-    res.status(500).json({ message: "Error al obtener los eventos futuros", error });
-  }
-});
-
-// obtener evento por id
-app.get("/api/events/:id", async (req, res) => {
-  try {
-    const event = await Event.findById(req.params.id);
-    if (!event) {
-      return res.status(404).json({ message: "Evento no encontrado" });
+    if (existingReview) {
+      return res.status(400).json({ message: "Ya has hecho una reseña para este bar" });
     }
-    res.status(200).json(event);
+
+    const newReview = new Review({
+      ...req.body,
+      user: req.user.id,
+      bar: req.params.barId,
+      createdAt: new Date()
+    });
+
+    await newReview.save();
+    
+    // Populate para devolver la info del usuario
+    await newReview.populate('user', 'name photo');
+    
+    res.status(201).json(newReview);
   } catch (error) {
-    res.status(500).json({ message: "Error al obtener el evento", error });
+    res.status(500).json({ message: "Error al crear la reseña", error });
   }
 });
 
-// CRUD relacionado a reseñas (Reviews)
+// Actualizar una review específica
+app.put("/api/reviews/:reviewId", async (req, res) => {
+  try {
+    const review = await Review.findById(req.params.reviewId);
+    if (!review) {
+      return res.status(404).json({ message: "Reseña no encontrada" });
+    }
 
+    // Verificar que el usuario sea el dueño de la review
+    if (review.user.toString() !== req.user.id) {
+      return res.status(403).json({ message: "No tienes permiso para editar esta reseña" });
+    }
 
+    const updatedReview = await Review.findByIdAndUpdate(
+      req.params.reviewId,
+      { ...req.body, updatedAt: new Date() },
+      { new: true }
+    ).populate('user', 'name photo');
+
+    res.status(200).json(updatedReview);
+  } catch (error) {
+    res.status(500).json({ message: "Error al actualizar la reseña", error });
+  }
+});
+
+// Eliminar una review específica
+app.delete("/api/reviews/:reviewId", async (req, res) => {
+  try {
+    const review = await Review.findById(req.params.reviewId);
+    if (!review) {
+      return res.status(404).json({ message: "Reseña no encontrada" });
+    }
+
+    // Verificar que el usuario sea el dueño de la review
+    if (review.user.toString() !== req.user.id) {
+      return res.status(403).json({ message: "No tienes permiso para eliminar esta reseña" });
+    }
+
+    await Review.findByIdAndDelete(req.params.reviewId);
+    res.status(200).json({ message: "Reseña eliminada exitosamente" });
+  } catch (error) {
+    res.status(500).json({ message: "Error al eliminar la reseña", error });
+  }
+});
+
+// Obtener reviews de un usuario específico
+app.get("/api/users/:userId/reviews", async (req, res) => {
+  try {
+    const reviews = await Review.find({ user: req.params.userId })
+      .populate('bar', 'name photo location')
+      .sort({ createdAt: -1 });
+    
+    res.status(200).json(reviews);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener las reseñas del usuario", error });
+  }
+});
+
+// Verificar si el usuario ya hizo una review para un bar específico
+app.get("/api/users/:userId/reviews/:barId/check", async (req, res) => {
+  try {
+    const review = await Review.findOne({
+      user: req.params.userId,
+      bar: req.params.barId
+    });
+    
+    res.status(200).json({ 
+      hasReviewed: !!review,
+      review: review || null
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error checking review status", error });
+  }
+});
+
+// Obtener estadísticas de reviews para un bar
+app.get("/api/bars/:barId/reviews/stats", async (req, res) => {
+  try {
+    const stats = await Review.aggregate([
+      { $match: { bar: mongoose.Types.ObjectId(req.params.barId) } },
+      {
+        $group: {
+          _id: null,
+          totalReviews: { $sum: 1 },
+          averageRating: { $avg: "$rating" },
+          ratings: {
+            $push: {
+              rating: "$rating",
+              createdAt: "$createdAt"
+            }
+          }
+        }
+      }
+    ]);
+
+    if (stats.length === 0) {
+      return res.status(200).json({
+        totalReviews: 0,
+        averageRating: 0,
+        ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+      });
+    }
+
+    // Calcular distribución de ratings
+    const ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    stats[0].ratings.forEach(r => {
+      ratingDistribution[r.rating]++;
+    });
+
+    res.status(200).json({
+      totalReviews: stats[0].totalReviews,
+      averageRating: Math.round(stats[0].averageRating * 10) / 10,
+      ratingDistribution
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener estadísticas", error });
+  }
+});
+
+// para contar cuantas reseñas tiene un usuario
+app.get("/api/users/:id/reviews/count", async (req, res) => {
+  try {
+    const count = await Review.countDocuments({ user: req.params.id });
+    res.status(200).json({ count });
+  } catch (error) {
+    res.status(500).json({ message: "Error getting review count", error });
+  }
+});
 
 // eliminar un bar de favoritos
 app.delete("/api/users/:userId/favorites/:barId", async (req, res) => {
