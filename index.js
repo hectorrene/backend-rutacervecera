@@ -797,6 +797,16 @@ app.get("/api/bars/owner/:ownerId/:barId/events", async (req, res) => {
   }
 });
 
+// evento especifico del bar del owner
+app.get("/api/bars/owner/:ownerId/:barId/events/:eventId", async (req, res) => {
+  try {
+    const event = await Event.findOne({ bar: req.params.barId, _id: req.params.eventId });
+    res.status(200).json(event);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener el evento", error });
+  }
+});
+
 // crear un evento de un bar de un owner
 app.post("/api/bars/owner/:ownerId/:barId/events", async (req, res) => {
   try {
