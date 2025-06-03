@@ -445,85 +445,177 @@ app.delete("/api/bars/:barId/events/:eventId", async (req, res) => {
 // CRUD completo para Reviews
 
 // Crear una review para un bar específico
+// Reemplaza tu endpoint POST "/api/bars/:barId/reviews" con esta versión corregida:
+
 app.post("/api/bars/:barId/reviews", async (req, res) => {
   try {
-    const bar = await Bar.findById(req.params.barId);
-    if (!bar) {
-      return res.status(404).json({ message: "Bar no encontrado" });
+    console.log('=== CREATE REVIEW DEBUG ===');
+    console.log('Request params:', req.params);
+    console.log('Request body:', req.body);
+    console.log('Bar ID:', req.params.barId);
+    
+    const { userId, rating, comment, photos } = req.body; // ✅ Destructuring correcto
+
+    // Check if userId is provided
+    if (!userId) {
+      console.log('ERROR: No userId provided');
+      return res.status(400).json({ message: "User ID is required" });
     }
 
+    console.log('Step 1: Checking if user exists...');
+    // Verificar que el usuario existe
+    const user = await User.findById(userId);
+    if (!user) {
+      console.log('ERROR: User not found:', userId);
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+    console.log('SUCCESS: User found:', user._id);
+
+    console.log('Step 2: Checking if bar exists...');
+    // Check if bar exists
+    const bar = await Bar.findById(req.params.barId);
+    if (!bar) {
+      console.log('ERROR: Bar not found:', req.params.barId);
+      return res.status(404).json({ message: "Bar no encontrado" });
+    }
+    console.log('SUCCESS: Bar found:', bar._id);
+
+    console.log('Step 3: Checking for existing review...');
     // Verificar que el usuario no haya hecho ya una review para este bar
     const existingReview = await Review.findOne({
-      user: req.user.id, // Asumiendo que tienes middleware de autenticación
+      user: userId,
       bar: req.params.barId
     });
 
     if (existingReview) {
+      console.log('ERROR: Existing review found:', existingReview._id);
       return res.status(400).json({ message: "Ya has hecho una reseña para este bar" });
     }
+    console.log('SUCCESS: No existing review found');
 
-    const newReview = new Review({
-      ...req.body,
-      user: req.user.id,
+    console.log('Step 4: Creating new review...');
+    // Create new review
+    const reviewData = {
+      rating,
+      comment,
+      photos: photos || [], // ✅ Ahora usa la variable destructurada
+      user: userId,
       bar: req.params.barId,
       createdAt: new Date()
-    });
+    };
+    console.log('Review data to be saved:', reviewData);
 
+    const newReview = new Review(reviewData);
+    console.log('Review object created:', newReview);
+
+    console.log('Step 5: Saving review to database...');
     await newReview.save();
+    console.log('SUCCESS: Review saved with ID:', newReview._id);
     
+    console.log('Step 6: Populating user data...');
     // Populate para devolver la info del usuario
     await newReview.populate('user', 'name photo');
+    console.log('SUCCESS: Review populated');
     
+    console.log('SUCCESS: Sending response');
     res.status(201).json(newReview);
   } catch (error) {
-    res.status(500).json({ message: "Error al crear la reseña", error });
+    console.error('=== REVIEW CREATION ERROR ===');
+    console.error('Error type:', error.constructor.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    
+    // More specific error handling
+    if (error.name === 'ValidationError') {
+      console.error('Validation errors:', error.errors);
+      return res.status(400).json({ 
+        message: "Error de validación", 
+        errors: error.errors,
+        details: error.message 
+      });
+    }
+    
+    if (error.name === 'CastError') {
+      console.error('Cast error - Invalid ID format');
+      return res.status(400).json({ 
+        message: "ID inválido", 
+        error: error.message 
+      });
+    }
+    
+    res.status(500).json({ 
+      message: "Error al crear la reseña", 
+      error: error.message,
+      errorType: error.constructor.name
+    });
   }
 });
 
-// Actualizar una review específica
-app.put("/api/reviews/:reviewId", async (req, res) => {
+// Actualizar una review específica - Modificado para recibir userId en la URL
+app.put("/api/users/:userId/reviews/:reviewId", async (req, res) => {
   try {
-    const review = await Review.findById(req.params.reviewId);
+    const { userId, reviewId } = req.params;
+    
+    // Verificar que el usuario existe
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    // Buscar la review
+    const review = await Review.findById(reviewId);
     if (!review) {
       return res.status(404).json({ message: "Reseña no encontrada" });
     }
 
     // Verificar que el usuario sea el dueño de la review
-    if (review.user.toString() !== req.user.id) {
+    if (review.user.toString() !== userId) {
       return res.status(403).json({ message: "No tienes permiso para editar esta reseña" });
     }
 
     const updatedReview = await Review.findByIdAndUpdate(
-      req.params.reviewId,
+      reviewId,
       { ...req.body, updatedAt: new Date() },
       { new: true }
     ).populate('user', 'name photo');
 
     res.status(200).json(updatedReview);
   } catch (error) {
-    res.status(500).json({ message: "Error al actualizar la reseña", error });
+    console.error('Error al actualizar review:', error);
+    res.status(500).json({ message: "Error al actualizar la reseña", error: error.message });
   }
 });
 
-// Eliminar una review específica
-app.delete("/api/reviews/:reviewId", async (req, res) => {
+// Eliminar una review específica - Modificado para recibir userId en la URL
+app.delete("/api/users/:userId/reviews/:reviewId", async (req, res) => {
   try {
-    const review = await Review.findById(req.params.reviewId);
+    const { userId, reviewId } = req.params;
+    
+    // Verificar que el usuario existe
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    // Buscar la review
+    const review = await Review.findById(reviewId);
     if (!review) {
       return res.status(404).json({ message: "Reseña no encontrada" });
     }
 
     // Verificar que el usuario sea el dueño de la review
-    if (review.user.toString() !== req.user.id) {
+    if (review.user.toString() !== userId) {
       return res.status(403).json({ message: "No tienes permiso para eliminar esta reseña" });
     }
 
-    await Review.findByIdAndDelete(req.params.reviewId);
+    await Review.findByIdAndDelete(reviewId);
     res.status(200).json({ message: "Reseña eliminada exitosamente" });
   } catch (error) {
-    res.status(500).json({ message: "Error al eliminar la reseña", error });
+    console.error('Error al eliminar review:', error);
+    res.status(500).json({ message: "Error al eliminar la reseña", error: error.message });
   }
 });
+
 
 // Obtener reviews de un usuario específico
 app.get("/api/users/:userId/reviews", async (req, res) => {
@@ -606,6 +698,59 @@ app.get("/api/users/:id/reviews/count", async (req, res) => {
     res.status(200).json({ count });
   } catch (error) {
     res.status(500).json({ message: "Error getting review count", error });
+  }
+});
+
+// Agregar un bar a favoritos
+app.post("/api/users/:userId/favorites/:barId", async (req, res) => {
+  try {
+    const { userId, barId } = req.params;
+    
+    // Verificar que el usuario existe
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    // Verificar que el bar existe
+    const bar = await Bar.findById(barId);
+    if (!bar) {
+      return res.status(404).json({ message: "Bar no encontrado" });
+    }
+
+    // Verificar si ya existe en favoritos
+    const existingFavorite = await Favorite.findOne({
+      user: userId,
+      bar: barId
+    });
+
+    if (existingFavorite) {
+      return res.status(409).json({ message: "El bar ya está en favoritos" });
+    }
+
+    // Crear nuevo favorito
+    const newFavorite = new Favorite({
+      user: userId,
+      bar: barId,
+      createdAt: new Date()
+    });
+
+    await newFavorite.save();
+    
+    // Popula la información del bar para la respuesta
+    await newFavorite.populate('bar');
+    
+    res.status(201).json({
+      message: "Bar agregado a favoritos exitosamente",
+      favorite: newFavorite
+    });
+    
+  } catch (error) {
+    console.error('Error al agregar favorito:', error);
+    res.status(500).json({ 
+      message: "Error al agregar el bar a favoritos", 
+      error: error.message 
+    });
   }
 });
 
@@ -797,7 +942,7 @@ app.get("/api/bars/owner/:ownerId/:barId/events", async (req, res) => {
   }
 });
 
-// evento especifico del bar del owner
+//evento especifico del bar del owner
 app.get("/api/bars/owner/:ownerId/:barId/events/:eventId", async (req, res) => {
   try {
     const event = await Event.findOne({ bar: req.params.barId, _id: req.params.eventId });
